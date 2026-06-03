@@ -4,6 +4,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,6 +20,10 @@ jobs:
         run: chmod +x gradlew
       - name: Build Release APK
         run: ./gradlew assembleRelease
+      - name: List APK files
+        run: |
+          echo "Looking for APK files..."
+          find . -name "*.apk" -type f
       - name: Upload APK to Release
         uses: softprops/action-gh-release@v1
         with:

@@ -31,7 +31,6 @@ class AdAutomationService : AccessibilityService() {
                     startAutoLoop()
                 }
             } else if (lastPackage in targetPackages) {
-                // 离开目标应用，立即返回两次
                 performGlobalAction(GLOBAL_ACTION_BACK)
                 performGlobalAction(GLOBAL_ACTION_BACK)
             }
@@ -56,7 +55,6 @@ class AdAutomationService : AccessibilityService() {
         for (text in denyTexts) {
             val nodes = root.findAccessibilityNodeInfosByText(text)
             if (nodes.isNotEmpty() && nodes.any { it.isClickable }) {
-                // 依次查找取消按钮
                 for (cancel in cancelTexts) {
                     val cancelNodes = root.findAccessibilityNodeInfosByText(cancel)
                     val clickableCancel = cancelNodes.firstOrNull { it.isClickable }
@@ -65,7 +63,6 @@ class AdAutomationService : AccessibilityService() {
                         return
                     }
                 }
-                // 没找到取消按钮则直接返回
                 performGlobalAction(GLOBAL_ACTION_BACK)
                 return
             }

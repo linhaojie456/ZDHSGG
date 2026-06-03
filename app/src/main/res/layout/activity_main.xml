@@ -4,7 +4,6 @@
     android:layout_height="match_parent"
     android:gravity="center"
     android:orientation="vertical">
-
     <Button
         android:id="@+id/btnOpenAccessibility"
         android:layout_width="wrap_content"

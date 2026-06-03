@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">AI 广告助手</string>
-    <string name="accessibility_desc">自动辅助浏览广告以获得最佳效率</string>
+    <string name="accessibility_desc">自动辅助浏览广告</string>
 </resources>
