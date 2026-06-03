@@ -21,10 +21,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
-class MainViewModelFactory(private val db: AppDatabase) : ViewModelProvider.Factory {
+class MainViewModelFactory(private val db: AppDatabase, private val app: Application) : ViewModelProvider.Factory {
     override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
         @Suppress("UNCHECKED_CAST")
-        // 需要 Application 实例，通过参数传递，但这里简化，使用反射获取
-        return MainViewModel(android.app.Application()) as T
+        return MainViewModel(app) as T
     }
 }

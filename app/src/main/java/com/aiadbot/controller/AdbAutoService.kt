@@ -19,9 +19,8 @@ import java.io.StringReader
 class AdbAutoService : Service() {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val db by lazy { AppDatabase.getDatabase(this) }
-    private var paused = false
+    @Volatile var paused = false
     private var job: Job? = null
-    private var autoTask: (suspend () -> Unit)? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createNotificationChannel()
@@ -56,9 +55,7 @@ class AdbAutoService : Service() {
                         delay(5000)
                         var idleCount = 0
                         while (idleCount < 3 && coroutineContext.isActive) {
-                            if (paused) {
-                                delay(1000); continue
-                            }
+                            if (paused) { delay(1000); continue }
                             val uiXml = adb.dumpUI()
                             if (uiXml.isBlank()) {
                                 delay(2000)
@@ -92,9 +89,6 @@ class AdbAutoService : Service() {
         return START_STICKY
     }
 
-    fun pause() { paused = true }
-    fun resume() { paused = false }
-
     private fun parseUI(xml: String): List<UIAction> {
         val actions = mutableListOf<UIAction>()
         try {
@@ -107,9 +101,7 @@ class AdbAutoService : Service() {
                     val desc = parser.getAttributeValue(null, "content-desc") ?: ""
                     val bounds = parser.getAttributeValue(null, "bounds") ?: ""
                     val clickable = parser.getAttributeValue(null, "clickable") == "true"
-                    if (!clickable) {
-                        eventType = parser.next(); continue
-                    }
+                    if (!clickable) { eventType = parser.next(); continue }
                     val coords = try {
                         val regex = Regex("\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]")
                         val match = regex.find(bounds)

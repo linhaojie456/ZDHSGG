@@ -8,7 +8,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="虚拟机列表" android:textSize="18sp" />
+        android:text="虚拟机列表 (默认已添加VMOS)" android:textSize="18sp" />
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerVMs"
         android:layout_width="match_parent"
@@ -27,6 +27,12 @@
         android:orientation="horizontal">
         <Button android:id="@+id/btnManageApps" android:layout_width="0dp" android:layout_weight="1"
             android:layout_height="wrap_content" android:text="管理应用" />
+        <Button android:id="@+id/btnTransplantWechat" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:text="移植微信" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal">
         <Button android:id="@+id/btnOpenWechat" android:layout_width="0dp" android:layout_weight="1"
             android:layout_height="wrap_content" android:text="打开虚拟机微信" />
     </LinearLayout>
