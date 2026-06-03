@@ -1,5 +1,4 @@
 package com.aiadbot
-
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.view.accessibility.AccessibilityEvent
@@ -25,15 +24,15 @@ class AdAutomationService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            val currentPkg = event.packageName?.toString() ?: return
-            if (currentPkg in targetPackages) {
-                if (currentPkg != lastPackage) {
-                    lastPackage = currentPkg
+            val pkg = event.packageName?.toString() ?: return
+            if (pkg in targetPackages) {
+                if (pkg != lastPackage) {
+                    lastPackage = pkg
                     startAutoLoop()
                 }
             } else if (lastPackage in targetPackages) {
+                // 离开目标应用，立即返回两次
                 performGlobalAction(GLOBAL_ACTION_BACK)
-                delay(200)
                 performGlobalAction(GLOBAL_ACTION_BACK)
             }
         }
@@ -57,29 +56,36 @@ class AdAutomationService : AccessibilityService() {
         for (text in denyTexts) {
             val nodes = root.findAccessibilityNodeInfosByText(text)
             if (nodes.isNotEmpty() && nodes.any { it.isClickable }) {
-                val cancel = root.findAccessibilityNodeInfosByText(*cancelTexts)
-                    .firstOrNull { it.isClickable }
-                cancel?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    ?: performGlobalAction(GLOBAL_ACTION_BACK)
-                break
+                // 依次查找取消按钮
+                for (cancel in cancelTexts) {
+                    val cancelNodes = root.findAccessibilityNodeInfosByText(cancel)
+                    val clickableCancel = cancelNodes.firstOrNull { it.isClickable }
+                    if (clickableCancel != null) {
+                        clickableCancel.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                        return
+                    }
+                }
+                // 没找到取消按钮则直接返回
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                return
             }
         }
     }
 
-    private fun executeAction(action: String, root: AccessibilityNodeInfo) {
+    private suspend fun executeAction(a: String, root: AccessibilityNodeInfo) {
         when {
-            action.startsWith("CLICK:") -> {
-                val text = action.removePrefix("CLICK:")
+            a.startsWith("CLICK:") -> {
+                val text = a.removePrefix("CLICK:")
                 root.findAccessibilityNodeInfosByText(text)
                     .firstOrNull { it.isClickable }
                     ?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             }
-            action.startsWith("WAIT:") -> {
-                val sec = action.removePrefix("WAIT:").toIntOrNull() ?: 5
+            a.startsWith("WAIT:") -> {
+                val sec = a.removePrefix("WAIT:").toIntOrNull() ?: 5
                 delay(sec * 1000L)
             }
-            action == "SWIPE_UP" -> performGlobalAction(GLOBAL_ACTION_BACK)
-            action == "BACK" -> performGlobalAction(GLOBAL_ACTION_BACK)
+            a == "SWIPE_UP" -> performGlobalAction(GLOBAL_ACTION_BACK)
+            a == "BACK" -> performGlobalAction(GLOBAL_ACTION_BACK)
         }
     }
 
