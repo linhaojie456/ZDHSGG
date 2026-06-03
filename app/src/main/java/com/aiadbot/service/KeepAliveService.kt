@@ -14,7 +14,7 @@ class KeepAliveService : Service() {
         val pendingIntent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = NotificationCompat.Builder(this, "AD_BOT_CHANNEL")
             .setContentTitle("AI广告助手运行中")
-            .setContentText("后台ADB自动操控")
+            .setContentText("深度广告操作进行中")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
