@@ -38,5 +38,9 @@
         <service
             android:name=".service.KeepAliveService"
             android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".service.AutoLoopService"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

@@ -12,17 +12,17 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.aiadbot.data.AppDatabase
-import com.aiadbot.service.KeepAliveService
 import com.aiadbot.databinding.ActivityMainBinding
+import com.aiadbot.service.AutoLoopService
+import com.aiadbot.service.KeepAliveService
 import kotlinx.coroutines.launch
 import androidx.lifecycle.lifecycleScope
-import android.preference.PreferenceManager
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var viewModel: MainViewModel
     private lateinit var adapter: AppAdapter
-    private var recordMode = false
+    private var autoLoopRunning = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,26 +46,35 @@ class MainActivity : AppCompatActivity() {
             binding.tvTotalReward.text = total.toString()
         }
 
-        // 记录模式开关
-        binding.switchRecordMode.setOnCheckedChangeListener { _, isChecked ->
-            recordMode = isChecked
-            Toast.makeText(this, if (isChecked) "记录模式开启" else "记录模式关闭", Toast.LENGTH_SHORT).show()
-            // 通知无障碍服务记录状态
-            val intent = Intent("com.aiadbot.RECORD_MODE").apply {
-                putExtra("enabled", isChecked)
-            }
-            sendBroadcast(intent)
-        }
-
         binding.btnAddApp.setOnClickListener { showAddAppDialog() }
         binding.btnStartStop.setOnClickListener {
-            val serviceIntent = Intent(this, KeepAliveService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
+            if (!autoLoopRunning) {
+                // 启动前台保活服务
+                val keepIntent = Intent(this, KeepAliveService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(keepIntent)
+                } else {
+                    startService(keepIntent)
+                }
+                // 启动自动循环服务
+                val loopIntent = Intent(this, AutoLoopService::class.java)
+                loopIntent.putExtra("start", true)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(loopIntent)
+                } else {
+                    startService(loopIntent)
+                }
+                autoLoopRunning = true
+                binding.btnStartStop.text = "停止任务"
+                Toast.makeText(this, "全自动任务已开始", Toast.LENGTH_SHORT).show()
             } else {
-                startService(serviceIntent)
+                // 停止循环
+                val loopIntent = Intent(this, AutoLoopService::class.java)
+                loopIntent.putExtra("start", false)
+                startService(loopIntent)
+                autoLoopRunning = false
+                binding.btnStartStop.text = "开始任务"
             }
-            Toast.makeText(this, "后台任务已启动", Toast.LENGTH_SHORT).show()
         }
 
         // 请求忽略电池优化
