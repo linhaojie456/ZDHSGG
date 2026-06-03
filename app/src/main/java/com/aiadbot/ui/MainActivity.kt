@@ -16,11 +16,13 @@ import com.aiadbot.service.KeepAliveService
 import com.aiadbot.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
 import androidx.lifecycle.lifecycleScope
+import android.preference.PreferenceManager
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var viewModel: MainViewModel
     private lateinit var adapter: AppAdapter
+    private var recordMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,6 +44,17 @@ class MainActivity : AppCompatActivity() {
             var total = 0L
             apps.forEach { total += it.reward }
             binding.tvTotalReward.text = total.toString()
+        }
+
+        // 记录模式开关
+        binding.switchRecordMode.setOnCheckedChangeListener { _, isChecked ->
+            recordMode = isChecked
+            Toast.makeText(this, if (isChecked) "记录模式开启" else "记录模式关闭", Toast.LENGTH_SHORT).show()
+            // 通知无障碍服务记录状态
+            val intent = Intent("com.aiadbot.RECORD_MODE").apply {
+                putExtra("enabled", isChecked)
+            }
+            sendBroadcast(intent)
         }
 
         binding.btnAddApp.setOnClickListener { showAddAppDialog() }
