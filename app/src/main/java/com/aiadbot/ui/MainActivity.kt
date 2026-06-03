@@ -13,7 +13,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.aiadbot.data.AppDatabase
 import com.aiadbot.databinding.ActivityMainBinding
-import com.aiadbot.service.AutoLoopService
 import com.aiadbot.service.KeepAliveService
 import kotlinx.coroutines.launch
 import androidx.lifecycle.lifecycleScope
@@ -22,7 +21,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var viewModel: MainViewModel
     private lateinit var adapter: AppAdapter
-    private var autoLoopRunning = false
+    private var serviceStarted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,31 +47,26 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnAddApp.setOnClickListener { showAddAppDialog() }
         binding.btnStartStop.setOnClickListener {
-            if (!autoLoopRunning) {
-                // 启动前台保活服务
-                val keepIntent = Intent(this, KeepAliveService::class.java)
+            // 检查无障碍服务是否开启
+            if (!isAccessibilityServiceEnabled()) {
+                Toast.makeText(this, "请先开启无障碍服务", Toast.LENGTH_LONG).show()
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                return@setOnClickListener
+            }
+
+            if (!serviceStarted) {
+                val intent = Intent(this, KeepAliveService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(keepIntent)
+                    startForegroundService(intent)
                 } else {
-                    startService(keepIntent)
+                    startService(intent)
                 }
-                // 启动自动循环服务
-                val loopIntent = Intent(this, AutoLoopService::class.java)
-                loopIntent.putExtra("start", true)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(loopIntent)
-                } else {
-                    startService(loopIntent)
-                }
-                autoLoopRunning = true
+                serviceStarted = true
                 binding.btnStartStop.text = "停止任务"
-                Toast.makeText(this, "全自动任务已开始", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "后台任务已启动，无障碍服务将自动运行", Toast.LENGTH_SHORT).show()
             } else {
-                // 停止循环
-                val loopIntent = Intent(this, AutoLoopService::class.java)
-                loopIntent.putExtra("start", false)
-                startService(loopIntent)
-                autoLoopRunning = false
+                stopService(Intent(this, KeepAliveService::class.java))
+                serviceStarted = false
                 binding.btnStartStop.text = "开始任务"
             }
         }
@@ -86,6 +80,15 @@ class MainActivity : AppCompatActivity() {
                 })
             }
         }
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val service = "$packageName/.service.AdAutomationService"
+        val enabledServices = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        return enabledServices.contains(service)
     }
 
     private fun showAddAppDialog() {

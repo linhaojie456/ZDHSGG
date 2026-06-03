@@ -2,16 +2,13 @@ package com.aiadbot.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
-import android.content.BroadcastReceiver
-import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.aiadbot.ai.AdLearner
 import com.aiadbot.data.AppDatabase
-import com.aiadbot.data.OperationRecord
 import kotlinx.coroutines.*
+import java.util.concurrent.TimeUnit
 
 class AdAutomationService : AccessibilityService() {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -19,133 +16,74 @@ class AdAutomationService : AccessibilityService() {
     private val learner = AdLearner()
     private val db by lazy { AppDatabase.getDatabase(this) }
     private var running = false
-    private var recordMode = false // 是否记录手动操作
+    private var currentAppIndex = 0
+    private var appList: List<com.aiadbot.data.TargetApp> = listOf()
+    private var currentAppStartTime = 0L
+    private var maxAppTime = TimeUnit.SECONDS.toMillis(30) // 每个应用最多停留30秒
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         serviceInfo = serviceInfo.apply {
             flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
-        // 注册广播接收器监听记录模式开关
-        val filter = IntentFilter("com.aiadbot.RECORD_MODE")
-        registerReceiver(recordModeReceiver, filter, RECEIVER_NOT_EXPORTED)
+        // 服务启动后立即开始循环
+        scope.launch { startFullAutomation() }
+    }
+
+    private suspend fun startFullAutomation() {
+        running = true
+        while (running) {
+            // 获取启用应用列表
+            appList = db.targetAppDao().getEnabled()
+            if (appList.isEmpty()) {
+                delay(5000)
+                continue
+            }
+            // 按顺序循环
+            for (i in appList.indices) {
+                currentAppIndex = i
+                val app = appList[i]
+                // 启动目标应用
+                val launchIntent = packageManager.getLaunchIntentForPackage(app.packageName)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    startActivity(launchIntent)
+                }
+                currentAppStartTime = System.currentTimeMillis()
+                // 等待应用进入前台
+                delay(2000)
+                // 执行广告操作，直到超时或应用退出
+                while (running && currentPkg == app.packageName &&
+                    (System.currentTimeMillis() - currentAppStartTime) < maxAppTime) {
+                    val root = rootInActiveWindow ?: continue
+                    if (!performAdOperations(root, app.packageName)) {
+                        // 如果已经没有可操作的目标，提前退出
+                        delay(3000)
+                    }
+                    delay(1000)
+                }
+                // 返回桌面
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                delay(2000)
+            }
+        }
+    }
+
+    // 执行一系列广告操作，返回是否还有操作空间
+    private suspend fun performAdOperations(root: AccessibilityNodeInfo, pkg: String): Boolean {
+        if (handleAntiDownload(root)) return true
+        if (handleUnrewardedAd(root)) return true
+        if (handleRewardFlow(root, pkg)) return true
+        if (clickRedPacketOrAdEntry(root)) return true
+        val action = learner.selectAction(root, pkg)
+        executeAction(action, root)
+        return true
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            val pkg = event.packageName?.toString() ?: return
-            if (pkg != currentPkg) {
-                currentPkg = pkg
-                scope.launch {
-                    // 如果记录模式开启，且当前应用是目标应用，记录切换界面状态
-                    if (recordMode) {
-                        recordState(pkg, "WINDOW_CHANGE", rootInActiveWindow)
-                    }
-                    checkAndStartLoop(pkg)
-                }
-            }
-        } else if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && recordMode) {
-            // 记录用户点击动作
-            val root = rootInActiveWindow
-            if (root != null && currentPkg.isNotEmpty()) {
-                scope.launch {
-                    val node = event.source
-                    val text = node?.text?.toString() ?: node?.contentDescription?.toString() ?: ""
-                    val action = if (text.isNotEmpty()) "CLICK:$text" else "CLICK:unknown"
-                    // 简单判断是否获得奖励（点击后界面出现奖励关键词）
-                    delay(500)
-                    val newRoot = rootInActiveWindow
-                    val rewarded = newRoot?.let {
-                        it.findAccessibilityNodeInfosByText("获得").isNotEmpty() ||
-                        it.findAccessibilityNodeInfosByText("奖励已领取").isNotEmpty()
-                    } ?: false
-                    recordState(currentPkg, action, root)
-                    if (rewarded) {
-                        db.operationRecordDao().insert(
-                            OperationRecord(
-                                packageName = currentPkg,
-                                stateHash = learner.hashState(root, currentPkg),
-                                action = action,
-                                rewardObtained = true
-                            )
-                        )
-                    } else {
-                        db.operationRecordDao().insert(
-                            OperationRecord(
-                                packageName = currentPkg,
-                                stateHash = learner.hashState(root, currentPkg),
-                                action = action,
-                                rewardObtained = false
-                            )
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private suspend fun recordState(pkg: String, action: String, root: AccessibilityNodeInfo?) {
-        root ?: return
-        db.operationRecordDao().insert(
-            OperationRecord(
-                packageName = pkg,
-                stateHash = learner.hashState(root, pkg),
-                action = action,
-                rewardObtained = false
-            )
-        )
-    }
-
-    private suspend fun checkAndStartLoop(pkg: String) {
-        val enabledApps = db.targetAppDao().getEnabled()
-        if (enabledApps.any { it.packageName == pkg } && !running) {
-            running = true
-            // 加载历史成功记录到学习器
-            loadSuccessfulRecords(pkg)
-            startLoop(pkg)
-        } else {
-            running = false
-        }
-    }
-
-    private suspend fun loadSuccessfulRecords(pkg: String) {
-        // 将数据库中成功的操作模式注入学习器
-        val records = db.operationRecordDao().getByPackage(pkg)
-        records.collect { list ->
-            list.filter { it.rewardObtained }.forEach { record ->
-                learner.addLearnedAction(record.stateHash, record.action)
-            }
-        }
-    }
-
-    private suspend fun startLoop(appPkg: String) {
-        while (running && currentPkg == appPkg) {
-            val root = rootInActiveWindow ?: continue
-
-            if (handleAntiDownload(root)) {
-                delay(500)
-                continue
-            }
-
-            if (handleUnrewardedAd(root)) {
-                delay(500)
-                continue
-            }
-
-            if (handleRewardFlow(root, appPkg)) {
-                delay(500)
-                continue
-            }
-
-            if (clickRedPacketOrAdEntry(root)) {
-                delay(1000)
-                continue
-            }
-
-            val action = learner.selectAction(root, appPkg)
-            executeAction(action, root)
-            delay(1500)
+            currentPkg = event.packageName?.toString() ?: ""
         }
     }
 
@@ -172,7 +110,6 @@ class AdAutomationService : AccessibilityService() {
 
     private fun handleUnrewardedAd(root: AccessibilityNodeInfo): Boolean {
         if (root.findAccessibilityNodeInfosByText("奖励已领取").isNotEmpty()) return false
-
         val closeKeywords = arrayOf("关闭", "跳过", "×", "关闭广告", "不感兴趣")
         for (keyword in closeKeywords) {
             val nodes = root.findAccessibilityNodeInfosByText(keyword)
@@ -195,17 +132,14 @@ class AdAutomationService : AccessibilityService() {
             val clickableSkip = skipNodes.firstOrNull { it.isClickable }
             clickableSkip?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             delay(800)
-
             val newRoot = rootInActiveWindow ?: return true
             val collectNodes = newRoot.findAccessibilityNodeInfosByText("立即收下")
             val clickableCollect = collectNodes.firstOrNull { it.isClickable }
             clickableCollect?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-
             db.targetAppDao().addReward(pkg, (50..200).random().toLong())
             delay(1000)
             return true
         }
-
         if (root.findAccessibilityNodeInfosByText("立即收下").isNotEmpty()) {
             val collect = root.findAccessibilityNodeInfosByText("立即收下").firstOrNull { it.isClickable }
             collect?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
@@ -213,7 +147,6 @@ class AdAutomationService : AccessibilityService() {
             delay(1000)
             return true
         }
-
         return false
     }
 
@@ -264,15 +197,10 @@ class AdAutomationService : AccessibilityService() {
         } catch (e: Exception) { false }
     }
 
-    private val recordModeReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            recordMode = intent?.getBooleanExtra("enabled", false) ?: false
-        }
-    }
-
     override fun onDestroy() {
         super.onDestroy()
-        unregisterReceiver(recordModeReceiver)
+        running = false
+        scope.cancel()
     }
 
     override fun onInterrupt() {}
