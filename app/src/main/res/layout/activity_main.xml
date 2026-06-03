@@ -9,34 +9,38 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="虚拟机列表" android:textSize="18sp" />
-
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerVMs"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="horizontal">
-        <EditText
-            android:id="@+id/etVmHost"
-            android:layout_width="0dp" android:layout_weight="1"
-            android:layout_height="wrap_content" android:hint="虚拟机IP:端口" />
-        <Button
-            android:id="@+id/btnAddVm"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" android:text="添加" />
+        <EditText android:id="@+id/etVmHost" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:hint="IP:端口" />
+        <Button android:id="@+id/btnAddVm" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:text="添加虚拟机" />
     </LinearLayout>
 
-    <Button
-        android:id="@+id/btnManageApps"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" android:text="管理应用" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal">
+        <Button android:id="@+id/btnManageApps" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:text="管理应用" />
+        <Button android:id="@+id/btnOpenWechat" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:text="打开虚拟机微信" />
+    </LinearLayout>
 
-    <Button
-        android:id="@+id/btnStart"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" android:text="开始自动任务" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal">
+        <Button android:id="@+id/btnStart" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:text="开始任务" />
+        <Button android:id="@+id/btnStop" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:text="停止任务" />
+        <Button android:id="@+id/btnContinue" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:text="继续(已授权)" />
+    </LinearLayout>
+
+    <TextView android:id="@+id/tvStatus" android:layout_width="wrap_content"
+        android:layout_height="wrap_content" android:text="状态：待启动" />
 </LinearLayout>

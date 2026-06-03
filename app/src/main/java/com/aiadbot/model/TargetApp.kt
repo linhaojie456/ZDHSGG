@@ -1,8 +1,6 @@
 package com.aiadbot.model
-
 import androidx.room.Entity
 import androidx.room.PrimaryKey
-
 @Entity(tableName = "target_apps")
 data class TargetApp(
     @PrimaryKey val packageName: String,

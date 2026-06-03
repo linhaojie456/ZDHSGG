@@ -18,7 +18,7 @@ class VmAdapter(private val onToggle: (VirtualMachine) -> Unit) :
             b.tvVmAddress.text = vm.host
             b.switchVmEnabled.isChecked = vm.enabled
             b.switchVmEnabled.setOnCheckedChangeListener { _, _ -> onToggle(vm) }
-            b.btnDeleteVm.setOnClickListener { /* 删除功能可自行添加 */ }
+            b.btnDeleteVm.setOnClickListener { /* 删除功能自行添加 */ }
         }
     }
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
