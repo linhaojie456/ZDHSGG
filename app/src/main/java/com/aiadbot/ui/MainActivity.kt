@@ -1,109 +1,80 @@
 package com.aiadbot.ui
+
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.aiadbot.controller.AutoService
 import com.aiadbot.data.AppDatabase
 import com.aiadbot.databinding.ActivityMainBinding
-import com.aiadbot.service.KeepAliveService
+import com.aiadbot.model.VirtualMachine
 import kotlinx.coroutines.launch
-import androidx.lifecycle.lifecycleScope
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var viewModel: MainViewModel
-    private lateinit var adapter: AppAdapter
-    private var serviceStarted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        val database = AppDatabase.getDatabase(this)
-        viewModel = ViewModelProvider(this, MainViewModelFactory(database, application))[MainViewModel::class.java]
+        val db = AppDatabase.getDatabase(this)
+        viewModel = ViewModelProvider(this, MainViewModelFactory(db))[MainViewModel::class.java]
 
-        adapter = AppAdapter(
-            onToggle = { app -> viewModel.toggleApp(app) },
-            onDelete = { app -> viewModel.deleteApp(app) }
-        )
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
+        val vmAdapter = VmAdapter { vm -> viewModel.toggleVm(vm) }
+        binding.recyclerVMs.layoutManager = LinearLayoutManager(this)
+        binding.recyclerVMs.adapter = vmAdapter
 
-        viewModel.allApps.observe(this) { apps ->
-            adapter.submitList(apps)
-            var total = 0L
-            apps.forEach { total += it.reward }
-            binding.tvTotalReward.text = total.toString()
+        viewModel.allVms.observe(this) { vms ->
+            vmAdapter.submitList(vms)
         }
 
-        binding.btnAddApp.setOnClickListener { showAddAppDialog() }
-        binding.btnStartStop.setOnClickListener {
-            if (!isAccessibilityServiceEnabled()) {
-                Toast.makeText(this, "请先开启无障碍服务", Toast.LENGTH_LONG).show()
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                return@setOnClickListener
+        binding.btnAddVm.setOnClickListener {
+            val host = binding.etVmHost.text.toString().trim()
+            if (host.isNotEmpty()) {
+                viewModel.addVm(host)
+                binding.etVmHost.text?.clear()
             }
-            if (!serviceStarted) {
-                val intent = Intent(this, KeepAliveService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(intent)
-                } else {
-                    startService(intent)
-                }
-                serviceStarted = true
-                binding.btnStartStop.text = "停止任务"
+        }
+
+        binding.btnManageApps.setOnClickListener {
+            // 弹出应用选择对话框（复用之前逻辑）
+            showAppSelectionDialog()
+        }
+
+        binding.btnStart.setOnClickListener {
+            val intent = Intent(this, AutoService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
             } else {
-                stopService(Intent(this, KeepAliveService::class.java))
-                serviceStarted = false
-                binding.btnStartStop.text = "开始任务"
+                startService(intent)
             }
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val powerManager = getSystemService(POWER_SERVICE) as android.os.PowerManager
-            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
-                startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                    data = Uri.parse("package:$packageName")
-                })
-            }
+            Toast.makeText(this, "自动化任务已启动", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun isAccessibilityServiceEnabled(): Boolean {
-        val service = "$packageName/.service.AdAutomationService"
-        val enabledServices = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
-        return enabledServices.contains(service)
-    }
-
-    private fun showAddAppDialog() {
+    private fun showAppSelectionDialog() {
         val pm = packageManager
-        val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA).filter {
+        val apps = pm.getInstalledApplications(0).filter {
             pm.getLaunchIntentForPackage(it.packageName) != null
         }.map { it.packageName to it.loadLabel(pm).toString() }
         val checked = BooleanArray(apps.size) { false }
         AlertDialog.Builder(this)
-            .setTitle("选择应用")
-            .setMultiChoiceItems(apps.map { it.second }.toTypedArray(), checked) { _, which, isChecked ->
-                checked[which] = isChecked
-            }
+            .setTitle("选择目标应用")
+            .setMultiChoiceItems(apps.map { it.second }.toTypedArray(), checked) { _, i, b -> checked[i] = b }
             .setPositiveButton("确定") { _, _ ->
                 lifecycleScope.launch {
-                    apps.forEachIndexed { index, (pkg, name) ->
-                        if (checked[index]) {
-                            viewModel.addApp(pkg, name)
-                        }
+                    apps.forEachIndexed { i, (pkg, name) ->
+                        if (checked[i]) viewModel.addTargetApp(pkg, name)
                     }
                 }
             }
-            .setNegativeButton("取消", null)
             .show()
     }
 }

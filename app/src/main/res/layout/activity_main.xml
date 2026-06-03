@@ -8,19 +8,10 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="总收益："
-        android:textSize="18sp" />
-    <TextView
-        android:id="@+id/tvTotalReward"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="0"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="16dp" />
+        android:text="虚拟机列表" android:textSize="18sp" />
 
     <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recyclerView"
+        android:id="@+id/recyclerVMs"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
@@ -28,21 +19,24 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center">
-
+        android:orientation="horizontal">
+        <EditText
+            android:id="@+id/etVmHost"
+            android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:hint="虚拟机IP:端口" />
         <Button
-            android:id="@+id/btnAddApp"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="添加应用" />
-
-        <Button
-            android:id="@+id/btnStartStop"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="开始任务" />
+            android:id="@+id/btnAddVm"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:text="添加" />
     </LinearLayout>
+
+    <Button
+        android:id="@+id/btnManageApps"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:text="管理应用" />
+
+    <Button
+        android:id="@+id/btnStart"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:text="开始自动任务" />
 </LinearLayout>
