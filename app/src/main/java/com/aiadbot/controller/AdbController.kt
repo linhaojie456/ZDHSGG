@@ -7,12 +7,16 @@ import java.io.InputStreamReader
 
 class AdbController(private val host: String) {
     private fun exec(cmd: String): String {
-        val process = Runtime.getRuntime().exec(cmd.split(" ").toTypedArray())
-        val reader = BufferedReader(InputStreamReader(process.inputStream))
-        val output = reader.readText()
-        process.waitFor()
-        reader.close()
-        return output
+        return try {
+            val process = Runtime.getRuntime().exec(cmd.split(" ").toTypedArray())
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
+            val output = reader.readText()
+            process.waitFor()
+            reader.close()
+            output
+        } catch (e: Exception) {
+            ""
+        }
     }
 
     private fun adbCmd(subCmd: String) = exec("adb -s $host $subCmd")
@@ -26,9 +30,6 @@ class AdbController(private val host: String) {
     }
     suspend fun pressBack() = withContext(Dispatchers.IO) { adbCmd("shell input keyevent KEYCODE_BACK") }
     suspend fun dumpUI(): String = withContext(Dispatchers.IO) {
-        adbCmd("shell uiautomator dump /dev/stdout") // 部分版本可能不支持，备用
-    }
-    suspend fun takeScreenshot(): String = withContext(Dispatchers.IO) {
-        adbCmd("shell screencap -p /sdcard/screen.png && shell cat /sdcard/screen.png")
+        adbCmd("shell uiautomator dump /dev/stdout")
     }
 }

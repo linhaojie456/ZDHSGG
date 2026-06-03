@@ -12,6 +12,7 @@ import com.aiadbot.R
 import com.aiadbot.data.AppDatabase
 import com.aiadbot.ui.MainActivity
 import kotlinx.coroutines.*
+import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.StringReader
 
@@ -20,6 +21,7 @@ class AdbAutoService : Service() {
     private val db by lazy { AppDatabase.getDatabase(this) }
     private var paused = false
     private var job: Job? = null
+    private var autoTask: (suspend () -> Unit)? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createNotificationChannel()
@@ -27,7 +29,7 @@ class AdbAutoService : Service() {
         val notification = NotificationCompat.Builder(this, "ADB_CHANNEL")
             .setContentTitle("AI广告助手运行中")
             .setContentText("通过ADB控制虚拟机")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
@@ -36,9 +38,56 @@ class AdbAutoService : Service() {
         if (intent?.getBooleanExtra("stop", false) == true) {
             job?.cancel()
             stopSelf()
-        } else {
-            job?.cancel()
-            job = scope.launch { autoTask() }
+            return START_NOT_STICKY
+        }
+
+        job?.cancel()
+        job = scope.launch {
+            while (isActive) {
+                val vms = db.vmDao().getAll().value?.filter { it.enabled } ?: listOf()
+                val apps = db.targetAppDao().getEnabled()
+                if (apps.isEmpty()) { delay(10000); continue }
+
+                for (vm in vms) {
+                    val adb = AdbController(vm.host)
+                    for (app in apps) {
+                        if (!coroutineContext.isActive) break
+                        adb.startApp(app.packageName)
+                        delay(5000)
+                        var idleCount = 0
+                        while (idleCount < 3 && coroutineContext.isActive) {
+                            if (paused) {
+                                delay(1000); continue
+                            }
+                            val uiXml = adb.dumpUI()
+                            if (uiXml.isBlank()) {
+                                delay(2000)
+                                idleCount++
+                                continue
+                            }
+                            val actions = parseUI(uiXml)
+                            if (actions.isEmpty()) {
+                                adb.swipe(500, 1200, 500, 400)
+                                idleCount++
+                                delay(2000)
+                            } else {
+                                for (action in actions) {
+                                    when (action) {
+                                        is UIAction.Tap -> adb.tap(action.x, action.y)
+                                        is UIAction.Back -> adb.pressBack()
+                                        is UIAction.Wait -> delay(action.ms)
+                                    }
+                                    delay(1000)
+                                }
+                                idleCount = 0
+                            }
+                        }
+                        adb.pressBack()
+                        delay(2000)
+                    }
+                }
+                delay(5000)
+            }
         }
         return START_STICKY
     }
@@ -46,66 +95,14 @@ class AdbAutoService : Service() {
     fun pause() { paused = true }
     fun resume() { paused = false }
 
-    private suspend fun autoTask() {
-        while (isActive) {
-            val vms = db.vmDao().getAll().value?.filter { it.enabled } ?: continue
-            val apps = db.targetAppDao().getEnabled()
-            if (apps.isEmpty()) { delay(10000); continue }
-
-            for (vm in vms) {
-                val adb = AdbController(vm.host)
-                for (app in apps) {
-                    if (!isActive) break
-                    // 启动应用
-                    adb.startApp(app.packageName)
-                    delay(5000)
-                    // 循环操作直到广告穷尽或超时
-                    var idleCount = 0
-                    while (idleCount < 3 && isActive) {
-                        if (paused) {
-                            delay(1000); continue
-                        }
-                        // 尝试获取UI并进行操作
-                        val uiXml = adb.dumpUI()
-                        if (uiXml.isBlank()) {
-                            delay(2000)
-                            idleCount++
-                            continue
-                        }
-                        val actions = parseUI(uiXml)
-                        if (actions.isEmpty()) {
-                            adb.swipe(500, 1200, 500, 400) // 向上滑动
-                            idleCount++
-                            delay(2000)
-                        } else {
-                            for (action in actions) {
-                                when (action) {
-                                    is UIAction.Tap -> adb.tap(action.x, action.y)
-                                    is UIAction.Back -> adb.pressBack()
-                                    is UIAction.Wait -> delay(action.ms)
-                                }
-                                delay(1000)
-                            }
-                            idleCount = 0
-                        }
-                    }
-                    // 返回桌面
-                    adb.pressBack()
-                    delay(2000)
-                }
-            }
-            delay(5000)
-        }
-    }
-
     private fun parseUI(xml: String): List<UIAction> {
         val actions = mutableListOf<UIAction>()
         try {
             val parser = XmlPullParserFactory.newInstance().newPullParser()
             parser.setInput(StringReader(xml))
             var eventType = parser.eventType
-            while (eventType != XmlPullParserFactory.newInstance().newPullParser().END_DOCUMENT) {
-                if (eventType == 2 /* START_TAG */) {
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                if (eventType == XmlPullParser.START_TAG) {
                     val text = parser.getAttributeValue(null, "text") ?: ""
                     val desc = parser.getAttributeValue(null, "content-desc") ?: ""
                     val bounds = parser.getAttributeValue(null, "bounds") ?: ""
@@ -127,9 +124,7 @@ class AdbAutoService : Service() {
                     val lower = (text + desc).lowercase()
                     when {
                         lower.contains("确认登录") || lower.contains("同意") || lower.contains("允许") -> {
-                            // 微信授权界面，暂停
                             paused = true
-                            // 发送通知提示手动操作
                             sendPauseNotification()
                             actions.add(UIAction.Wait(5000))
                         }

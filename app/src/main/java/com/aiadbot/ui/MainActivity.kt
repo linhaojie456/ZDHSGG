@@ -10,9 +10,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.aiadbot.controller.AdbAutoService
+import com.aiadbot.controller.AdbController
 import com.aiadbot.data.AppDatabase
 import com.aiadbot.databinding.ActivityMainBinding
-import com.aiadbot.model.VirtualMachine
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -65,7 +65,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resumeService() {
-        // 通过静态方式很难直接与Service通信，这里简单重启service，实际应使用广播或绑定
         stopService()
         startService()
         Toast.makeText(this, "继续自动化", Toast.LENGTH_SHORT).show()
@@ -78,8 +77,7 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this@MainActivity, "请先添加虚拟机", Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            // 简单打开第一个虚拟机的微信
-            val adb = com.aiadbot.controller.AdbController(vms[0].host)
+            val adb = AdbController(vms[0].host)
             adb.startApp("com.tencent.mm")
         }
     }
