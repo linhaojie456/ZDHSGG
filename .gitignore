@@ -1,6 +1,0 @@
-storage/
-*.apk
-*.log
-.gradle/
-build/
-local.properties
