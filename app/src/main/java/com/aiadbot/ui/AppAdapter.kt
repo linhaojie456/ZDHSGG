@@ -1,5 +1,4 @@
 package com.aiadbot.ui
-
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
@@ -11,29 +10,19 @@ import com.aiadbot.databinding.ItemAppBinding
 class AppAdapter(
     private val onToggle: (TargetApp) -> Unit,
     private val onDelete: (TargetApp) -> Unit
-) : ListAdapter<TargetApp, AppAdapter.ViewHolder>(DiffCallback) {
-
-    inner class ViewHolder(private val binding: ItemAppBinding) : RecyclerView.ViewHolder(binding.root) {
+) : ListAdapter<TargetApp, AppAdapter.VH>(object : DiffUtil.ItemCallback<TargetApp>() {
+    override fun areItemsTheSame(a: TargetApp, b: TargetApp) = a.packageName == b.packageName
+    override fun areContentsTheSame(a: TargetApp, b: TargetApp) = a == b
+}) {
+    inner class VH(private val b: ItemAppBinding) : RecyclerView.ViewHolder(b.root) {
         fun bind(app: TargetApp) {
-            binding.tvAppName.text = app.appName
-            binding.tvReward.text = "收益: ${app.reward}"
-            binding.switchEnabled.isChecked = app.enabled
-            binding.switchEnabled.setOnCheckedChangeListener { _, _ -> onToggle(app) }
-            binding.root.setOnLongClickListener { onDelete(app); true }
+            b.tvAppName.text = app.appName
+            b.tvReward.text = "收益: ${app.reward}"
+            b.switchEnabled.isChecked = app.enabled
+            b.switchEnabled.setOnCheckedChangeListener { _, _ -> onToggle(app) }
+            b.root.setOnLongClickListener { onDelete(app); true }
         }
     }
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val binding = ItemAppBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        return ViewHolder(binding)
-    }
-
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(getItem(position))
-    }
-
-    object DiffCallback : DiffUtil.ItemCallback<TargetApp>() {
-        override fun areItemsTheSame(old: TargetApp, new: TargetApp) = old.packageName == new.packageName
-        override fun areContentsTheSame(old: TargetApp, new: TargetApp) = old == new
-    }
+    override fun onCreateViewHolder(p: ViewGroup, vt: Int) = VH(ItemAppBinding.inflate(LayoutInflater.from(p.context), p, false))
+    override fun onBindViewHolder(h: VH, pos: Int) = h.bind(getItem(pos))
 }

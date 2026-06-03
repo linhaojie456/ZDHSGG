@@ -25,24 +25,11 @@
         android:layout_height="0dp"
         android:layout_weight="1" />
 
-    <LinearLayout
+    <Button
+        android:id="@+id/btnShizuku"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginTop="8dp">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="记录手动操作:" />
-
-        <Switch
-            android:id="@+id/switchRecordMode"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp" />
-    </LinearLayout>
+        android:text="请求 Shizuku 权限" />
 
     <LinearLayout
         android:layout_width="match_parent"

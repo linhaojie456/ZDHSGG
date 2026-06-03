@@ -1,207 +1,121 @@
 package com.aiadbot.service
-
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
-import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.aiadbot.ai.AdLearner
 import com.aiadbot.data.AppDatabase
+import com.aiadbot.shizuku.ShellExecutor
 import kotlinx.coroutines.*
-import java.util.concurrent.TimeUnit
 
 class AdAutomationService : AccessibilityService() {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-    private var currentPkg = ""
     private val learner = AdLearner()
     private val db by lazy { AppDatabase.getDatabase(this) }
     private var running = false
-    private var currentAppIndex = 0
-    private var appList: List<com.aiadbot.data.TargetApp> = listOf()
-    private var currentAppStartTime = 0L
-    private var maxAppTime = TimeUnit.SECONDS.toMillis(30) // 每个应用最多停留30秒
+    private lateinit var shell: ShellExecutor
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        serviceInfo = serviceInfo.apply {
-            flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-        }
-        // 服务启动后立即开始循环
-        scope.launch { startFullAutomation() }
+        serviceInfo = serviceInfo.apply { flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
+        shell = ShellExecutor(this)
+        scope.launch { startAutomation() }
     }
 
-    private suspend fun startFullAutomation() {
+    private suspend fun startAutomation() {
+        if (!shell.isAvailable()) return
         running = true
         while (running) {
-            // 获取启用应用列表
-            appList = db.targetAppDao().getEnabled()
-            if (appList.isEmpty()) {
-                delay(5000)
-                continue
-            }
-            // 按顺序循环
-            for (i in appList.indices) {
-                currentAppIndex = i
-                val app = appList[i]
+            val apps = db.targetAppDao().getEnabled()
+            if (apps.isEmpty()) { delay(5000); continue }
+            for (app in apps) {
+                if (!running) break
                 // 启动目标应用
-                val launchIntent = packageManager.getLaunchIntentForPackage(app.packageName)
-                if (launchIntent != null) {
-                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    startActivity(launchIntent)
-                }
-                currentAppStartTime = System.currentTimeMillis()
-                // 等待应用进入前台
-                delay(2000)
-                // 执行广告操作，直到超时或应用退出
-                while (running && currentPkg == app.packageName &&
-                    (System.currentTimeMillis() - currentAppStartTime) < maxAppTime) {
-                    val root = rootInActiveWindow ?: continue
-                    if (!performAdOperations(root, app.packageName)) {
-                        // 如果已经没有可操作的目标，提前退出
-                        delay(3000)
-                    }
-                    delay(1000)
+                shell.exec("am start -n ${app.packageName}/$(pm resolve-activity --brief -c android.intent.category.LAUNCHER ${app.packageName} | tail -1)")
+                delay(3000)
+                // 循环操作最多20秒
+                repeat(5) {
+                    if (!running) return
+                    val root = rootInActiveWindow ?: return@repeat
+                    performOperations(root, app.packageName)
+                    delay(3000)
                 }
                 // 返回桌面
-                performGlobalAction(GLOBAL_ACTION_HOME)
+                shell.exec("input keyevent KEYCODE_HOME")
                 delay(2000)
             }
         }
     }
 
-    // 执行一系列广告操作，返回是否还有操作空间
-    private suspend fun performAdOperations(root: AccessibilityNodeInfo, pkg: String): Boolean {
-        if (handleAntiDownload(root)) return true
-        if (handleUnrewardedAd(root)) return true
-        if (handleRewardFlow(root, pkg)) return true
-        if (clickRedPacketOrAdEntry(root)) return true
+    private suspend fun performOperations(root: AccessibilityNodeInfo, pkg: String) {
+        // 使用无障碍节点坐标 + ADB 点击
+        handleAntiDownload(root)
+        handleReward(root, pkg)
+        clickRedPacket(root)
         val action = learner.selectAction(root, pkg)
-        executeAction(action, root)
-        return true
+        executeAdbAction(action, root)
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        event ?: return
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            currentPkg = event.packageName?.toString() ?: ""
-        }
-    }
-
-    private fun handleAntiDownload(root: AccessibilityNodeInfo): Boolean {
-        val deny = arrayOf("下载", "安装", "允许", "立即更新", "去应用商店")
-        val cancel = arrayOf("取消", "暂不", "拒绝", "关闭", "以后再说", "忽略")
+    private fun handleAntiDownload(root: AccessibilityNodeInfo) {
+        val deny = arrayOf("下载", "安装", "允许", "立即更新")
+        val cancel = arrayOf("取消", "暂不", "拒绝", "关闭", "以后再说")
         for (t in deny) {
-            val nodes = root.findAccessibilityNodeInfosByText(t)
-            if (nodes.isNotEmpty() && nodes.any { it.isClickable }) {
+            root.findAccessibilityNodeInfosByText(t).firstOrNull { it.isClickable }?.let { node ->
                 for (c in cancel) {
-                    val cancelNodes = root.findAccessibilityNodeInfosByText(c)
-                    val clickable = cancelNodes.firstOrNull { it.isClickable }
-                    if (clickable != null) {
-                        clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                        return true
+                    root.findAccessibilityNodeInfosByText(c).firstOrNull { it.isClickable }?.let { cancelNode ->
+                        clickNode(cancelNode)
+                        return
                     }
                 }
-                performGlobalAction(GLOBAL_ACTION_BACK)
-                return true
+                shell.exec("input keyevent KEYCODE_BACK")
+                return
             }
         }
-        return false
     }
 
-    private fun handleUnrewardedAd(root: AccessibilityNodeInfo): Boolean {
-        if (root.findAccessibilityNodeInfosByText("奖励已领取").isNotEmpty()) return false
-        val closeKeywords = arrayOf("关闭", "跳过", "×", "关闭广告", "不感兴趣")
-        for (keyword in closeKeywords) {
-            val nodes = root.findAccessibilityNodeInfosByText(keyword)
-            val clickable = nodes.firstOrNull { it.isClickable }
-            if (clickable != null) {
-                if (root.findAccessibilityNodeInfosByText("立即收下").isEmpty() &&
-                    root.findAccessibilityNodeInfosByText("收下").isEmpty()) {
-                    clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    return true
-                }
-            }
-        }
-        return false
-    }
-
-    private suspend fun handleRewardFlow(root: AccessibilityNodeInfo, pkg: String): Boolean {
-        val rewardNodes = root.findAccessibilityNodeInfosByText("奖励已领取")
-        if (rewardNodes.isNotEmpty()) {
-            val skipNodes = root.findAccessibilityNodeInfosByText("跳过")
-            val clickableSkip = skipNodes.firstOrNull { it.isClickable }
-            clickableSkip?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            delay(800)
-            val newRoot = rootInActiveWindow ?: return true
-            val collectNodes = newRoot.findAccessibilityNodeInfosByText("立即收下")
-            val clickableCollect = collectNodes.firstOrNull { it.isClickable }
-            clickableCollect?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            db.targetAppDao().addReward(pkg, (50..200).random().toLong())
+    private suspend fun handleReward(root: AccessibilityNodeInfo, pkg: String) {
+        if (root.findAccessibilityNodeInfosByText("奖励已领取").isNotEmpty()) {
+            root.findAccessibilityNodeInfosByText("跳过").firstOrNull { it.isClickable }?.let { clickNode(it) }
             delay(1000)
-            return true
-        }
-        if (root.findAccessibilityNodeInfosByText("立即收下").isNotEmpty()) {
-            val collect = root.findAccessibilityNodeInfosByText("立即收下").firstOrNull { it.isClickable }
-            collect?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            rootInActiveWindow?.findAccessibilityNodeInfosByText("立即收下")?.firstOrNull { it.isClickable }?.let { clickNode(it) }
             db.targetAppDao().addReward(pkg, (50..200).random().toLong())
-            delay(1000)
-            return true
+        } else if (root.findAccessibilityNodeInfosByText("立即收下").isNotEmpty()) {
+            root.findAccessibilityNodeInfosByText("立即收下").firstOrNull { it.isClickable }?.let { clickNode(it) }
+            db.targetAppDao().addReward(pkg, (50..200).random().toLong())
         }
-        return false
     }
 
-    private fun clickRedPacketOrAdEntry(root: AccessibilityNodeInfo): Boolean {
-        val entryKeywords = arrayOf("开", "红包", "看视频得金币", "看视频赚", "领金币", "视频红包", "去观看")
-        for (key in entryKeywords) {
-            val nodes = root.findAccessibilityNodeInfosByText(key)
-            val clickable = nodes.firstOrNull { it.isClickable }
-            if (clickable != null) {
-                clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                return true
-            }
+    private fun clickRedPacket(root: AccessibilityNodeInfo) {
+        val keywords = arrayOf("开", "红包", "看视频得金币", "领金币")
+        for (k in keywords) {
+            root.findAccessibilityNodeInfosByText(k).firstOrNull { it.isClickable }?.let { clickNode(it); return }
         }
-        for (i in 0 until root.childCount) {
-            val child = root.getChild(i) ?: continue
-            if (child.contentDescription?.contains("开") == true && child.isClickable) {
-                child.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                return true
-            }
-        }
-        return false
     }
 
-    private suspend fun executeAction(a: String, root: AccessibilityNodeInfo): Boolean {
-        return try {
-            when {
-                a.startsWith("CLICK:") -> {
-                    val text = a.removePrefix("CLICK:")
-                    val node = root.findAccessibilityNodeInfosByText(text).firstOrNull { it.isClickable }
-                    node?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    node != null
-                }
-                a.startsWith("WAIT:") -> {
-                    val sec = a.removePrefix("WAIT:").toIntOrNull() ?: 5
-                    delay(sec * 1000L)
-                    true
-                }
-                a == "SWIPE_UP" -> {
-                    performGlobalAction(GLOBAL_ACTION_BACK)
-                    true
-                }
-                a == "BACK" -> {
-                    performGlobalAction(GLOBAL_ACTION_BACK)
-                    true
-                }
-                else -> false
+    private fun executeAdbAction(action: String, root: AccessibilityNodeInfo) {
+        when {
+            action.startsWith("CLICK:") -> {
+                root.findAccessibilityNodeInfosByText(action.removePrefix("CLICK:")).firstOrNull { it.isClickable }?.let { clickNode(it) }
             }
-        } catch (e: Exception) { false }
+            action.startsWith("WAIT:") -> { /* handled by coroutine */ }
+            action == "SWIPE_UP" -> shell.exec("input swipe 500 1500 500 500 300")
+            action == "BACK" -> shell.exec("input keyevent KEYCODE_BACK")
+        }
     }
 
+    private fun clickNode(node: AccessibilityNodeInfo) {
+        val rect = android.graphics.Rect()
+        node.getBoundsInScreen(rect)
+        val x = rect.centerX()
+        val y = rect.centerY()
+        shell.exec("input tap $x $y")
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onInterrupt() {}
     override fun onDestroy() {
-        super.onDestroy()
         running = false
         scope.cancel()
+        super.onDestroy()
     }
-
-    override fun onInterrupt() {}
 }
