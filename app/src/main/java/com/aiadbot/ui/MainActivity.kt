@@ -117,7 +117,7 @@ class MainActivity : AppCompatActivity() {
                 lifecycleScope.launch {
                     val adb = AdbController(selectedHost)
                     val success = withContext(Dispatchers.IO) { adb.installLocalAppToVm("com.tencent.mm") }
-                    val msg = if (success) "微信移植成功" else "微信移植失败，请确保本机已安装微信且ADB有权限"
+                    val msg = if (success) "微信移植成功，请登录" else "微信移植失败，请检查ADB权限"
                     Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
                     if (success) viewModel.addTargetApp("com.tencent.mm", "微信")
                 }
