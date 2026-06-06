@@ -1,4 +1,4 @@
-package com.aiadbot.model
+package com.aiadbot.data
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 @Entity(tableName = "target_apps")
