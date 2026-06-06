@@ -24,7 +24,7 @@
     </LinearLayout>
 
     <Button android:id="@+id/btnTestAdb" android:layout_width="match_parent"
-        android:layout_height="wrap_content" android:text="测试ADB连接" />
+        android:layout_height="wrap_content" android:text="测试ADB" />
 
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="horizontal">
@@ -34,11 +34,8 @@
             android:layout_height="wrap_content" android:text="移植微信" />
     </LinearLayout>
 
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:orientation="horizontal">
-        <Button android:id="@+id/btnOpenWechat" android:layout_width="0dp" android:layout_weight="1"
-            android:layout_height="wrap_content" android:text="打开虚拟机微信" />
-    </LinearLayout>
+    <Button android:id="@+id/btnOpenWechat" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:text="打开虚拟机微信" />
 
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="horizontal">

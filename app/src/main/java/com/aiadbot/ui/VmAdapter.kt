@@ -18,10 +18,8 @@ class VmAdapter(private val onToggle: (VirtualMachine) -> Unit) :
             b.tvVmAddress.text = vm.host
             b.switchVmEnabled.isChecked = vm.enabled
             b.switchVmEnabled.setOnCheckedChangeListener { _, _ -> onToggle(vm) }
-            b.btnDeleteVm.setOnClickListener { /* 删除功能自行添加 */ }
         }
     }
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-        VH(ItemVmBinding.inflate(LayoutInflater.from(parent.context), parent, false))
-    override fun onBindViewHolder(holder: VH, position: Int) = holder.bind(getItem(position))
+    override fun onCreateViewHolder(p: ViewGroup, vt: Int) = VH(ItemVmBinding.inflate(LayoutInflater.from(p.context), p, false))
+    override fun onBindViewHolder(h: VH, pos: Int) = h.bind(getItem(pos))
 }
