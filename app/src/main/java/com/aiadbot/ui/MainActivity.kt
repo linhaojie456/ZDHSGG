@@ -53,12 +53,42 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        binding.btnTestAdb.setOnClickListener { testAdbConnections() }
         binding.btnManageApps.setOnClickListener { selectVmAndInstallApps() }
         binding.btnTransplantWechat.setOnClickListener { selectVmAndTransplantWechat() }
         binding.btnOpenWechat.setOnClickListener { openWechatOnVm() }
         binding.btnStart.setOnClickListener { startService() }
         binding.btnStop.setOnClickListener { stopService() }
         binding.btnContinue.setOnClickListener { resumeService() }
+    }
+
+    private fun testAdbConnections() {
+        lifecycleScope.launch {
+            val vms = viewModel.allVms.value
+            if (vms.isNullOrEmpty()) {
+                Toast.makeText(this@MainActivity, "没有虚拟机，请先添加", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val results = StringBuilder()
+            for (vm in vms) {
+                val adb = AdbController(vm.host)
+                val connected = withContext(Dispatchers.IO) { adb.testConnection() }
+                results.append("${vm.host}: ${if (connected) "已连接" else "无法连接"}\n")
+            }
+            // 同时检查本机 ADB 是否可用
+            val localConnected = withContext(Dispatchers.IO) {
+                try {
+                    val process = Runtime.getRuntime().exec(arrayOf("adb", "shell", "echo", "ok"))
+                    process.inputStream.bufferedReader().readText().contains("ok")
+                } catch (e: Exception) { false }
+            }
+            results.append("本机ADB: ${if (localConnected) "正常" else "异常"}")
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle("ADB连接状态")
+                .setMessage(results.toString())
+                .setPositiveButton("确定", null)
+                .show()
+        }
     }
 
     private fun selectVmAndInstallApps() {
@@ -92,9 +122,9 @@ class MainActivity : AppCompatActivity() {
                     val adb = AdbController(targetVmHost)
                     apps.forEachIndexed { i, (pkg, _) ->
                         if (checked[i]) {
-                            val success = withContext(Dispatchers.IO) { adb.installLocalAppToVm(pkg) }
-                            val msg = if (success) "移植成功: $pkg" else "移植失败: $pkg"
-                            withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show() }
+                            val (success, errMsg) = withContext(Dispatchers.IO) { adb.installLocalAppToVmWithError(pkg) }
+                            val msg = if (success) "移植成功: $pkg" else "移植失败: $pkg, 原因: $errMsg"
+                            withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show() }
                             if (success) viewModel.addTargetApp(pkg, apps[i].second)
                         }
                     }
@@ -116,9 +146,9 @@ class MainActivity : AppCompatActivity() {
                 val selectedHost = vmList[which]
                 lifecycleScope.launch {
                     val adb = AdbController(selectedHost)
-                    val success = withContext(Dispatchers.IO) { adb.installLocalAppToVm("com.tencent.mm") }
-                    val msg = if (success) "微信移植成功，请登录" else "微信移植失败，请检查ADB权限"
-                    Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
+                    val (success, errMsg) = withContext(Dispatchers.IO) { adb.installLocalAppToVmWithError("com.tencent.mm") }
+                    val msg = if (success) "微信移植成功，请登录" else "微信移植失败: $errMsg"
+                    Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
                     if (success) viewModel.addTargetApp("com.tencent.mm", "微信")
                 }
             }
